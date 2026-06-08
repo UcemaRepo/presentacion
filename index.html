@@ -366,7 +366,7 @@
       </div>
 
     <!-- definición -->
-    <div class="note" style="margin-bottom:24px">
+    <div class="note" id="nota-capita" style="margin-bottom:24px">
       <span class="nt-title">¿Qué es una cápita neta?</span>
       Una <b>cápita</b> es el <b style="background:var(--paper-2);padding:1px 6px;border-radius:3px;color:var(--green)">ingreso real</b> que aporta un alumno — no un inscripto más en una lista. Descuenta la beca que recibe y también a quienes se anotan pero después no vienen o no pagan; por eso las cápitas siempre son menos que las personas, y dos inscriptos pueden valer muy distinto. Es la métrica que conecta admisiones con el resultado económico de la universidad. <b>Cápitas CC</b> = primeras inscripciones en las 12 carreras del Ciclo Común; <b>Cápitas Totales</b> = CC + ABOG + ININF + INIA + dobles titulaciones.
     </div>
@@ -983,6 +983,7 @@ const BLOCK_SEL='.sec-head, .grid, .card.flush, .note, #scenarios, .method, .pro
 /* Paradas por vista (override del selector por defecto).
    Proyectos: la tarjeta izquierda de cada fila (.proj:nth-child(odd)) en vez de la grilla entera. */
 const VIEW_STOPS={
+  historia:'.sec-head, .card.flush, .note:not(#nota-capita)',
   proyectos:'.sec-head, .proj-stack, .proj:nth-child(odd), .note'
 };
 /* Dónde debe caer el PRIMER "bajar" de cada vista (resto: primer bloque tras la cabecera). */
