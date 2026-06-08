@@ -322,6 +322,22 @@
     border:1px solid var(--rule-strong);box-shadow:0 4px 18px rgba(0,0,0,.12);background:#000;
   }
   #cam-prev video{width:100%;height:100%;object-fit:cover;transform:scaleX(-1)}
+  #cam-overlay{position:absolute;inset:0;pointer-events:none}
+  #cam-overlay .cx-v{position:absolute;left:50%;top:0;bottom:0;width:2px;margin-left:-1px;background:rgba(255,255,255,.5)}
+  #cam-overlay .cx-h{position:absolute;top:50%;left:0;right:0;height:2px;margin-top:-1px;background:rgba(255,255,255,.5)}
+  #cam-overlay .cx-hint{position:absolute;color:rgba(255,255,255,.85);font-size:15px;font-weight:700;transform:translate(-50%,-50%);transition:all .12s}
+  #cam-overlay .cx-hint.up{left:50%;top:13%}
+  #cam-overlay .cx-hint.down{left:50%;top:87%}
+  #cam-overlay .cx-hint.left{left:11%;top:50%}
+  #cam-overlay .cx-hint.right{left:89%;top:50%}
+  #cam-overlay.fire-down .cx-hint.down,
+  #cam-overlay.fire-up .cx-hint.up,
+  #cam-overlay.fire-left .cx-hint.left,
+  #cam-overlay.fire-right .cx-hint.right{color:#fff;font-size:28px;text-shadow:0 0 12px var(--red)}
+  #cam-dot{position:absolute;width:14px;height:14px;border-radius:50%;background:var(--red);box-shadow:0 0 0 4px rgba(163,54,33,.28);transform:translate(-50%,-50%);display:none}
+  #gesture-flash{position:fixed;inset:0;z-index:60;display:none;align-items:center;justify-content:center;pointer-events:none;font-size:140px;line-height:1;color:var(--accent);font-weight:700;text-shadow:0 6px 30px rgba(0,0,0,.25)}
+  #gesture-flash.show{display:flex;animation:gflash .6s ease-out}
+  @keyframes gflash{0%{opacity:0;transform:scale(.6)}22%{opacity:1;transform:scale(1)}100%{opacity:0;transform:scale(1.18)}}
 </style>
 </head>
 <body>
@@ -638,7 +654,16 @@
   </button>
   <span id="cam-lbl">Activar cámara</span>
 </div>
-<div id="cam-prev" style="display:none"><video id="cam-video" autoplay muted playsinline></video></div>
+<div id="cam-prev" style="display:none">
+  <video id="cam-video" autoplay muted playsinline></video>
+  <div id="cam-overlay">
+    <div class="cx-v"></div><div class="cx-h"></div>
+    <span class="cx-hint up">↑</span><span class="cx-hint down">↓</span>
+    <span class="cx-hint left">←</span><span class="cx-hint right">→</span>
+    <div id="cam-dot"></div>
+  </div>
+</div>
+<div id="gesture-flash"></div>
 <canvas id="cam-canvas" width="80" height="60" style="display:none"></canvas>
 <script>
 /* ============================================================
@@ -1080,6 +1105,10 @@ function initGesture(){
   }
   const ctx=canvas.getContext('2d',{willReadFrequently:true});
   const W=canvas.width, H=canvas.height;
+  const overlay=document.getElementById('cam-overlay');
+  const dot=document.getElementById('cam-dot');
+  const gflash=document.getElementById('gesture-flash');
+  const ARROW={down:'↓',up:'↑',right:'→',left:'←'};
   let stream=null, raf=null, on=false, prevData=null;
   let burst=[], lowFrames=0, cooldown=0;
 
@@ -1098,6 +1127,12 @@ function initGesture(){
     else if(dir==='up'){ blockStep(-1); flash('arriba ↑'); }
     else if(dir==='right'){ navStep(1); flash('siguiente →'); }
     else if(dir==='left'){ navStep(-1); flash('anterior ←'); }
+    /* feedback visual: resalta el brazo de la cruz + flecha grande en pantalla */
+    overlay.className='fire-'+dir;
+    clearTimeout(emit._a); emit._a=setTimeout(()=>overlay.className='',500);
+    gflash.textContent=ARROW[dir];
+    gflash.classList.remove('show'); void gflash.offsetWidth; gflash.classList.add('show');
+    clearTimeout(emit._f); emit._f=setTimeout(()=>gflash.classList.remove('show'),620);
   }
   function evaluate(){
     if(burst.length>=4){
@@ -1122,8 +1157,13 @@ function initGesture(){
         const d=Math.abs(cur[i]-prevData[i])+Math.abs(cur[i+1]-prevData[i+1])+Math.abs(cur[i+2]-prevData[i+2]);
         if(d>THRESH){ const p=i>>2; sx+=p%W; sy+=(p/W)|0; n++; }
       }
-      if(n>MIN_PIX){ burst.push({x:sx/n,y:sy/n}); lowFrames=0; }
-      else if(burst.length && ++lowFrames>=3){ evaluate(); }
+      if(n>MIN_PIX){
+        const cx=sx/n, cy=sy/n;
+        burst.push({x:cx,y:cy}); lowFrames=0;
+        dot.style.left=(cx/W*100)+'%'; dot.style.top=(cy/H*100)+'%'; dot.style.display='block';
+      }
+      else if(burst.length && ++lowFrames>=3){ evaluate(); dot.style.display='none'; }
+      else if(!burst.length){ dot.style.display='none'; }
     }
     prevData=cur;
     raf=requestAnimationFrame(loop);
@@ -1147,6 +1187,7 @@ function initGesture(){
     on=false; if(raf) cancelAnimationFrame(raf);
     if(stream){ stream.getTracks().forEach(t=>t.stop()); stream=null; }
     prev.style.display='none'; btn.classList.remove('on'); lbl.textContent='Activar cámara';
+    dot.style.display='none'; overlay.className='';
   }
   btn.addEventListener('click',()=> on?stop():start());
   window.gestureCtl={stop};
