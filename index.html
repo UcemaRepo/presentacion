@@ -984,18 +984,25 @@ function viewBlocks(){
   return v?[...v.querySelectorAll(BLOCK_SEL)]:[];
 }
 
-function scrollToBlock(el){
-  const nav=document.querySelector('nav.tabs');
-  const off=(nav?nav.offsetHeight:0)+18;
-  const y=el.getBoundingClientRect().top+window.scrollY-off;
-  window.scrollTo({top:Math.max(0,y),behavior:'smooth'});
-}
-
 function blockStep(dir){
   const blocks=viewBlocks();
   if(!blocks.length) return;
   stepIndex=Math.max(0,Math.min(blocks.length-1,stepIndex+dir));
-  scrollToBlock(blocks[stepIndex]);
+  const el=blocks[stepIndex];
+  const r=el.getBoundingClientRect();
+  const top=r.top+window.scrollY, h=r.height;
+  const nav=document.querySelector('nav.tabs');
+  const off=(nav?nav.offsetHeight:0)+12;
+  const vh=window.innerHeight, M=16;
+  let y;
+  if(dir>0 && h<=vh-off-M){
+    /* bajar: alinear el FINAL del bloque al pie de la pantalla */
+    y=top+h-vh+M;
+  }else{
+    /* subir (o bloque más alto que la pantalla): alinear el INICIO bajo la barra */
+    y=top-off;
+  }
+  window.scrollTo({top:Math.max(0,y),behavior:'smooth'});
 }
 
 function initTabs(){
@@ -1021,9 +1028,9 @@ function initVoice(){
   const norm=s=>s.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
   const tokens=s=>norm(s).split(/[^a-z]+/).filter(Boolean);
 
-  const BLOCK_NEXT=['siguiente','sigue','segui','baja','baja','abajo','bajar'];
-  const BLOCK_PREV=['arriba','subir','subi','sube'];
-  const PAGE_NEXT =['avanzar','avanza','avanza','adelante','proxima','proximo','pasar','pasa'];
+  const BLOCK_NEXT=['bajar','baja','abajo','siguiente','sigue'];
+  const BLOCK_PREV=['subir','subi','sube','arriba'];
+  const PAGE_NEXT =['avanzar','avanza','adelante','proxima','proximo','pasar','pasa'];
   const PAGE_PREV =['retroceder','anterior','volver','volve','atras'];
   const DIRECT={
     caratula:['inicio','portada','principio','caratula'],
@@ -1045,8 +1052,8 @@ function initVoice(){
     for(const [view,keys] of Object.entries(DIRECT)){
       if(has(keys)){ goToView(view); flash(view); return; }
     }
-    if(has(BLOCK_NEXT)){ blockStep(1);  flash('siguiente ↓'); return; }
-    if(has(BLOCK_PREV)){ blockStep(-1); flash('arriba ↑');    return; }
+    if(has(BLOCK_NEXT)){ blockStep(1);  flash('bajar ↓');   return; }
+    if(has(BLOCK_PREV)){ blockStep(-1); flash('subir ↑');   return; }
     if(has(PAGE_NEXT)){  navStep(1);    flash('avanzar →');   return; }
     if(has(PAGE_PREV)){  navStep(-1);   flash('← página');    return; }
   }
