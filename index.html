@@ -1030,8 +1030,15 @@ function initVoice(){
     }
   };
   rec.onerror=e=>{
+    console.warn('SpeechRecognition error:', e.error);
     if(e.error==='not-allowed'||e.error==='service-not-allowed'){
-      listening=false; setUI(); lbl.textContent='Micrófono bloqueado';
+      listening=false; setUI(); lbl.textContent='Permiso denegado';
+    }else if(e.error==='network'){
+      listening=false; setUI(); lbl.textContent='Sin servicio de voz';
+    }else if(e.error==='no-speech'){
+      lbl.textContent='No te escuché';
+    }else{
+      lbl.textContent='Error: '+e.error;
     }
   };
   rec.onend=()=>{ if(listening){ try{rec.start();}catch(_){} } }; // reinicio automático
