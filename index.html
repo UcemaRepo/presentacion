@@ -306,6 +306,22 @@
     50%{box-shadow:0 0 0 8px rgba(163,54,33,0)}
   }
   #voice-lbl{font-size:12px;color:var(--ink-soft);letter-spacing:.02em;min-width:78px}
+  .vsep{width:1px;height:24px;background:var(--rule-strong);flex:none}
+  #cam-lbl{font-size:12px;color:var(--ink-soft);letter-spacing:.02em;min-width:92px}
+  #cam-btn{
+    appearance:none;cursor:pointer;border:none;
+    width:38px;height:38px;border-radius:50%;flex:none;
+    background:var(--accent);color:var(--paper-2);
+    display:grid;place-items:center;transition:background .15s, transform .15s;
+  }
+  #cam-btn:hover{transform:scale(1.05)}
+  #cam-btn.on{background:var(--red);animation:voicePulse 1.4s ease-in-out infinite}
+  #cam-prev{
+    position:fixed;right:22px;bottom:78px;z-index:50;
+    width:160px;height:120px;border-radius:12px;overflow:hidden;
+    border:1px solid var(--rule-strong);box-shadow:0 4px 18px rgba(0,0,0,.12);background:#000;
+  }
+  #cam-prev video{width:100%;height:100%;object-fit:cover;transform:scaleX(-1)}
 </style>
 </head>
 <body>
@@ -614,7 +630,16 @@
     </svg>
   </button>
   <span id="voice-lbl">Activar voz</span>
+  <span class="vsep"></span>
+  <button id="cam-btn" title="Activar/desactivar control por gestos">
+    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/>
+    </svg>
+  </button>
+  <span id="cam-lbl">Activar cámara</span>
 </div>
+<div id="cam-prev" style="display:none"><video id="cam-video" autoplay muted playsinline></video></div>
+<canvas id="cam-canvas" width="80" height="60" style="display:none"></canvas>
 <script>
 /* ============================================================
    DATOS — EDITÁ ACÁ. Todo lo de abajo alimenta los gráficos.
@@ -961,6 +986,7 @@ function goToView(target){
   const vui=document.getElementById('voice-ui');
   if(vui) vui.style.display=(target==='caratula')?'none':'flex';
   if(target==='caratula' && window.voiceCtl) window.voiceCtl.stop();
+  if(target==='caratula' && window.gestureCtl) window.gestureCtl.stop();
 }
 
 function currentIndex(){
@@ -1036,6 +1062,94 @@ function initTabs(){
   document.querySelectorAll('[data-view]').forEach(el=>{
     el.addEventListener('click',()=>goToView(el.dataset.view));
   });
+}
+
+/* ============================================================
+   CONTROL POR GESTOS — diferencia de cuadros (sin IA, sin librerías)
+   Detecta el desplazamiento del centro de movimiento y lo clasifica
+   por eje dominante: ↓ baja bloque, ↑ sube bloque, → / ← cambia página.
+============================================================ */
+function initGesture(){
+  const btn=document.getElementById('cam-btn');
+  const lbl=document.getElementById('cam-lbl');
+  const prev=document.getElementById('cam-prev');
+  const video=document.getElementById('cam-video');
+  const canvas=document.getElementById('cam-canvas');
+  if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){
+    lbl.textContent='Cámara no soportada'; btn.disabled=true; btn.style.opacity=.5; return;
+  }
+  const ctx=canvas.getContext('2d',{willReadFrequently:true});
+  const W=canvas.width, H=canvas.height;
+  let stream=null, raf=null, on=false, prevData=null;
+  let burst=[], lowFrames=0, cooldown=0;
+
+  const THRESH=42;          /* diferencia por canal para contar un píxel "en movimiento" */
+  const MIN_PIX=W*H*0.02;   /* mínimo de píxeles movidos para considerar que hay gesto */
+  const MIN_SWIPE=0.16;     /* desplazamiento mínimo (fracción del cuadro) */
+  const COOLDOWN=1100;      /* ms de espera entre gestos */
+
+  function flash(t){
+    lbl.textContent='» '+t;
+    clearTimeout(flash._t);
+    flash._t=setTimeout(()=>{ if(on) lbl.textContent='Detectando…'; },1400);
+  }
+  function emit(dir){
+    if(dir==='down'){ blockStep(1);  flash('abajo ↓'); }
+    else if(dir==='up'){ blockStep(-1); flash('arriba ↑'); }
+    else if(dir==='right'){ navStep(1); flash('siguiente →'); }
+    else if(dir==='left'){ navStep(-1); flash('anterior ←'); }
+  }
+  function evaluate(){
+    if(burst.length>=4){
+      const a=burst[0], b=burst[burst.length-1];
+      const ndx=(b.x-a.x)/W, ndy=(b.y-a.y)/H;   /* canvas ya espejado → derecha = derecha del usuario */
+      if(Math.hypot(ndx,ndy)>=MIN_SWIPE){
+        if(Math.abs(ndx)>Math.abs(ndy)) emit(ndx>0?'right':'left');
+        else                            emit(ndy>0?'down':'up');
+        cooldown=performance.now()+COOLDOWN;
+      }
+    }
+    burst=[]; lowFrames=0;
+  }
+  function loop(){
+    if(!on) return;
+    ctx.save(); ctx.scale(-1,1); ctx.drawImage(video,-W,0,W,H); ctx.restore(); /* espejado */
+    const cur=ctx.getImageData(0,0,W,H).data;
+    const now=performance.now();
+    if(prevData && now>cooldown){
+      let sx=0,sy=0,n=0;
+      for(let i=0;i<cur.length;i+=4){
+        const d=Math.abs(cur[i]-prevData[i])+Math.abs(cur[i+1]-prevData[i+1])+Math.abs(cur[i+2]-prevData[i+2]);
+        if(d>THRESH){ const p=i>>2; sx+=p%W; sy+=(p/W)|0; n++; }
+      }
+      if(n>MIN_PIX){ burst.push({x:sx/n,y:sy/n}); lowFrames=0; }
+      else if(burst.length && ++lowFrames>=3){ evaluate(); }
+    }
+    prevData=cur;
+    raf=requestAnimationFrame(loop);
+  }
+  async function start(){
+    try{
+      stream=await navigator.mediaDevices.getUserMedia({video:{width:320,height:240}});
+      video.srcObject=stream; await video.play();
+      on=true; prev.style.display='block'; btn.classList.add('on');
+      lbl.textContent='Detectando…'; prevData=null; burst=[]; lowFrames=0;
+      cooldown=performance.now()+700;
+      loop();
+    }catch(e){
+      on=false; btn.classList.remove('on');
+      lbl.textContent = e.name==='NotAllowedError' ? 'Permiso denegado'
+                      : e.name==='NotFoundError'   ? 'Sin cámara'
+                      : 'Error: '+e.name;
+    }
+  }
+  function stop(){
+    on=false; if(raf) cancelAnimationFrame(raf);
+    if(stream){ stream.getTracks().forEach(t=>t.stop()); stream=null; }
+    prev.style.display='none'; btn.classList.remove('on'); lbl.textContent='Activar cámara';
+  }
+  btn.addEventListener('click',()=> on?stop():start());
+  window.gestureCtl={stop};
 }
 
 /* ============================================================
@@ -1148,6 +1262,7 @@ aporteBars();
 scenarios2027();
 initTabs();
 initVoice();
+initGesture();
 </script>
 </body>
 </html>
