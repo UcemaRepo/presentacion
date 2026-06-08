@@ -943,6 +943,7 @@ function scenarios2027(){
 ============================================================ */
 /* Orden de navegación (incluye la carátula, que no tiene tab) */
 const VIEW_ORDER=['caratula','historia','campana','proyeccion','proyectos'];
+let stepIndex=0; /* posición de bloque dentro de la vista activa */
 
 function goToView(target){
   const tv=document.getElementById(target);
@@ -952,6 +953,7 @@ function goToView(target){
   tv.classList.add('active');
   const tb=document.querySelector('.tab[data-view="'+target+'"]');
   if(tb) tb.classList.add('active');
+  stepIndex=0;                       /* la cabecera (bloque 0) queda a la vista */
   window.scrollTo({top:0,behavior:'smooth'});
 
   /* La voz sólo tiene sentido dentro de la presentación, no en la carátula */
@@ -970,6 +972,30 @@ function navStep(dir){
   let i=currentIndex()+dir;
   i=Math.max(0,Math.min(VIEW_ORDER.length-1,i));
   goToView(VIEW_ORDER[i]);
+}
+
+/* ---- navegación por bloques dentro de la página ---- */
+/* Selector de bloques navegables. Se usa querySelectorAll (orden de documento),
+   robusto frente al anidado roto: scrollIntoView usa la posición renderizada. */
+const BLOCK_SEL='.sec-head, .grid, .card.flush, .note, #scenarios, .method, .proj-stack';
+
+function viewBlocks(){
+  const v=document.querySelector('.view.active');
+  return v?[...v.querySelectorAll(BLOCK_SEL)]:[];
+}
+
+function scrollToBlock(el){
+  const nav=document.querySelector('nav.tabs');
+  const off=(nav?nav.offsetHeight:0)+18;
+  const y=el.getBoundingClientRect().top+window.scrollY-off;
+  window.scrollTo({top:Math.max(0,y),behavior:'smooth'});
+}
+
+function blockStep(dir){
+  const blocks=viewBlocks();
+  if(!blocks.length) return;
+  stepIndex=Math.max(0,Math.min(blocks.length-1,stepIndex+dir));
+  scrollToBlock(blocks[stepIndex]);
 }
 
 function initTabs(){
@@ -991,15 +1017,19 @@ function initVoice(){
     return;
   }
 
-  /* Diccionario de comandos: frase hablada -> acción.
-     El habla nunca dice "_", así que matcheamos palabras naturales. */
-  const NEXT=['avanzar','avanza','siguiente','adelante','proxima','próxima','continuar','pasar'];
-  const PREV=['anterior','atras','atrás','volver','retroceder','previa','previo'];
+  /* Diccionario de comandos. Matcheo por palabra completa y sin acentos. */
+  const norm=s=>s.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
+  const tokens=s=>norm(s).split(/[^a-z]+/).filter(Boolean);
+
+  const BLOCK_NEXT=['siguiente','sigue','segui','baja','baja','abajo','bajar'];
+  const BLOCK_PREV=['arriba','subir','subi','sube'];
+  const PAGE_NEXT =['avanzar','avanza','avanza','adelante','proxima','proximo','pasar','pasa'];
+  const PAGE_PREV =['retroceder','anterior','volver','volve','atras'];
   const DIRECT={
-    caratula:['inicio','portada','principio','caratula','carátula'],
+    caratula:['inicio','portada','principio','caratula'],
     historia:['historia'],
-    campana:['campaña','campana','marzo'],
-    proyeccion:['proyección','proyeccion'],
+    campana:['campana','marzo'],
+    proyeccion:['proyeccion'],
     proyectos:['proyectos','desarrollo']
   };
 
@@ -1010,12 +1040,15 @@ function initVoice(){
   }
 
   function handle(raw){
-    const t=raw.toLowerCase().trim();
+    const w=tokens(raw);
+    const has=arr=>arr.some(k=>w.includes(k));
     for(const [view,keys] of Object.entries(DIRECT)){
-      if(keys.some(k=>t.includes(k))){ goToView(view); flash(view); return; }
+      if(has(keys)){ goToView(view); flash(view); return; }
     }
-    if(NEXT.some(k=>t.includes(k))){ navStep(1);  flash('avanzar');  return; }
-    if(PREV.some(k=>t.includes(k))){ navStep(-1); flash('anterior'); return; }
+    if(has(BLOCK_NEXT)){ blockStep(1);  flash('siguiente ↓'); return; }
+    if(has(BLOCK_PREV)){ blockStep(-1); flash('arriba ↑');    return; }
+    if(has(PAGE_NEXT)){  navStep(1);    flash('avanzar →');   return; }
+    if(has(PAGE_PREV)){  navStep(-1);   flash('← página');    return; }
   }
 
   const rec=new SR();
@@ -1060,10 +1093,12 @@ function initVoice(){
     stop(){ if(listening){ listening=false; rec.stop(); setUI(); } }
   };
 
-  /* Atajo de teclado por si falla el micro: ← → para navegar */
+  /* Atajos de teclado: ↓↑ navegan bloques, →← navegan páginas */
   document.addEventListener('keydown',ev=>{
-    if(ev.key==='ArrowRight') navStep(1);
-    if(ev.key==='ArrowLeft')  navStep(-1);
+    if(ev.key==='ArrowDown'){  ev.preventDefault(); blockStep(1); }
+    if(ev.key==='ArrowUp'){    ev.preventDefault(); blockStep(-1); }
+    if(ev.key==='ArrowRight')  navStep(1);
+    if(ev.key==='ArrowLeft')   navStep(-1);
   });
 
   setUI();
