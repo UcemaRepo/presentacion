@@ -565,7 +565,7 @@
         <div class="pwhat">Analiza las conversaciones de WhatsApp de los asesores contra la metodología de venta y devuelve feedback al asesor más métricas estructuradas.</div>
         <div class="pimpact"><b>Impacto:</b> sube la calidad del seguimiento sin agregar gente — cada asesor recibe devolución concreta sobre cómo mejorar su cierre.</div>
       </div>
-      <div class="proj">
+      <div class="proj" id="proj-dashboards">
         <div class="ph"><span class="pstatus live">En uso</span></div>
         <h4>Dashboards de decisión</h4>
         <div class="pwhat">Tableros construidos con Claude como motor: cápitas históricas, seguimiento semanal con estacionalidad, peso y crecimiento de canales.</div>
@@ -944,6 +944,7 @@ function scenarios2027(){
 /* Orden de navegación (incluye la carátula, que no tiene tab) */
 const VIEW_ORDER=['caratula','historia','campana','proyeccion','proyectos'];
 let stepIndex=0; /* posición de bloque dentro de la vista activa */
+let firstUsed=false; /* si ya se usó el primer "bajar" de la vista */
 
 function goToView(target){
   const tv=document.getElementById(target);
@@ -953,7 +954,7 @@ function goToView(target){
   tv.classList.add('active');
   const tb=document.querySelector('.tab[data-view="'+target+'"]');
   if(tb) tb.classList.add('active');
-  stepIndex=0;                       /* la cabecera (bloque 0) queda a la vista */
+  stepIndex=0; firstUsed=false;      /* la cabecera (bloque 0) queda a la vista */
   window.scrollTo({top:0,behavior:'smooth'});
 
   /* La voz sólo tiene sentido dentro de la presentación, no en la carátula */
@@ -979,16 +980,43 @@ function navStep(dir){
    robusto frente al anidado roto: scrollIntoView usa la posición renderizada. */
 const BLOCK_SEL='.sec-head, .grid, .card.flush, .note, #scenarios, .method, .proj-stack';
 
-function viewBlocks(){
+/* Paradas por vista (override del selector por defecto).
+   Proyectos: la tarjeta izquierda de cada fila (.proj:nth-child(odd)) en vez de la grilla entera. */
+const VIEW_STOPS={
+  proyectos:'.sec-head, .proj-stack, .proj:nth-child(odd), .note'
+};
+/* Dónde debe caer el PRIMER "bajar" de cada vista (resto: primer bloque tras la cabecera). */
+const FIRST_STOP={
+  proyeccion:'#scenarios',
+  proyectos:'#proj-dashboards'
+};
+
+function viewStops(){
   const v=document.querySelector('.view.active');
-  return v?[...v.querySelectorAll(BLOCK_SEL)]:[];
+  if(!v) return {v:null,list:[]};
+  return {v,list:[...v.querySelectorAll(VIEW_STOPS[v.id]||BLOCK_SEL)]};
+}
+
+function firstStopIndex(v,list){
+  const sel=FIRST_STOP[v.id];
+  if(sel){
+    const i=list.indexOf(v.querySelector(sel));
+    if(i>=0) return i;
+  }
+  return Math.min(1,list.length-1);
 }
 
 function blockStep(dir){
-  const blocks=viewBlocks();
-  if(!blocks.length) return;
-  stepIndex=Math.max(0,Math.min(blocks.length-1,stepIndex+dir));
-  const el=blocks[stepIndex];
+  const {v,list}=viewStops();
+  if(!list.length) return;
+  if(dir>0 && !firstUsed){
+    firstUsed=true;
+    stepIndex=firstStopIndex(v,list);
+  }else{
+    firstUsed=true;
+    stepIndex=Math.max(0,Math.min(list.length-1,stepIndex+dir));
+  }
+  const el=list[stepIndex];
   const r=el.getBoundingClientRect();
   const top=r.top+window.scrollY, h=r.height;
   const nav=document.querySelector('nav.tabs');
@@ -996,11 +1024,9 @@ function blockStep(dir){
   const vh=window.innerHeight, M=16;
   let y;
   if(dir>0 && h<=vh-off-M){
-    /* bajar: alinear el FINAL del bloque al pie de la pantalla */
-    y=top+h-vh+M;
+    y=top+h-vh+M;                 /* bajar: final del bloque al pie */
   }else{
-    /* subir (o bloque más alto que la pantalla): alinear el INICIO bajo la barra */
-    y=top-off;
+    y=top-off;                    /* subir o bloque muy alto: inicio bajo la barra */
   }
   window.scrollTo({top:Math.max(0,y),behavior:'smooth'});
 }
